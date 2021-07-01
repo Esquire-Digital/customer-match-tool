@@ -14,6 +14,7 @@ ALL_HEADERS = REQUIRED_HEADERS.union(OPTIONAL_HEADERS)
 ANSI = {
     "YELLOW": "\u001b[33m",
     "RED": "\u001b[31m",
+    "CYAN": "\u001b[36m",
     "BOLD": "\u001b[1m",
     "RESET": "\u001b[0m",
 }
