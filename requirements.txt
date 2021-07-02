@@ -1,7 +1,0 @@
-click
-pandas
-uszipcode
-tqdm
-phonenumbers
-numpy
-country_converter

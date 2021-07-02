@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 with open("DESCRIPTION.txt") as file:
     long_description = file.read()
@@ -27,8 +27,12 @@ setup(
     author="Ryan Hartman",
     author_email="rhartman1239@gmail.com",
     license="MIT",
-    # packages=["geo"],
+    packages=find_packages(),
+    entry_points={
+        'console_scripts': ['customer-match-translator=customer_match.cli:main']
+    },
     classifiers=CLASSIFIERS,
     install_requires=REQUIREMENTS,
     keywords="google customer match csv",
+    zip_safe = False
 )
