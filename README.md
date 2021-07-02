@@ -45,11 +45,12 @@ If a field type is not automatically picked up but exists in the CSV, add it to 
 
 ## Options
 
-| Option              | Description                                                                                | Default      |
-| ------------------- | ------------------------------------------------------------------------------------------ | ------------ |
-| -o, --output (path) | Specify a path for the resulting CSV file.                                                 | `result.csv` |
-| --hash              | Flag to hash every element in the file using [sha256](https://en.wikipedia.org/wiki/SHA-2) |              |
-| --help              | Display the help message.                                                                  |              |
+| Option              | Description                                                                                                                                                                                                              | Default      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
+| -o, --output (path) | Specify a path for the resulting CSV file.                                                                                                                                                                               | `result.csv` |
+| --hash              | Flag to hash every element in the file using [sha256](https://en.wikipedia.org/wiki/SHA-2)                                                                                                                               |              |
+| --help              | Display the help message.                                                                                                                                                                                                |              |
+| --format            | Flag to format the resulting CSV as it would be formatted before hashing. Will lowercase all strings, strip them of whitespace, convert the country column to ISO2 format, and convert the phone number to E.164 format. |              |
 
 ## Translations
 

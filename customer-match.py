@@ -1,15 +1,22 @@
 #!/usr/bin/python3
 import os
-from typing import Iterable
 import click
 import sys
 import csv
 import time
 import pandas as pd
+import country_converter as coco
 import hashlib
+import phonenumbers
 from tqdm import tqdm
 from uszipcode import SearchEngine
-from constants import ANSI, ALL_HEADERS, REQUIRED_HEADERS, HEADER_TRANSLATIONS
+from constants import (
+    ANSI,
+    ALL_HEADERS,
+    REQUIRED_HEADERS,
+    HEADER_TRANSLATIONS,
+    DO_NOT_HASH,
+)
 
 
 class Error(ValueError):
@@ -28,6 +35,11 @@ class NoZipError(FormatError):
     """Raised when a zip code is not found in a spreadsheet. Sometimes recoverable."""
 
     pass
+
+
+# ==========================
+# Formatted console prints
+# ==========================
 
 
 def warn(message: str):
@@ -75,7 +87,7 @@ def check_csv(filepath: str) -> csv.Dialect:
 
     # Try to open the file and verify it can be read as a CSV.
     try:
-        file = open(filepath)
+        file = open(filepath, encoding="utf8")
         dialect = csv.Sniffer().sniff(file.read(100000))
         file.seek(0)
         file.close()
@@ -91,17 +103,18 @@ def parse_google_fields(filepath: str, ignore_zip: bool = False) -> dict:
 
     Args:
         filepath (str): Path to the CSV file.
+        ignore_zip (bool): Flag to ignore the zip code column, and not throw an error if it is missing.
 
     Raises:
         ValueError: If not all required headers can be found
 
     Returns:
-        dict: A map from Google's field name to the field name that was found in the CSV.
-                eg: "First Name": "first_name"
+        dict: A map from the field name that was found in the CSV to Google's field name.
+                eg: "first_name": "First Name"
     """
     field_map = {}
     found_headers = []
-    with open(filepath, "r") as file:
+    with open(filepath, "r", encoding="utf8") as file:
         reader = csv.DictReader(file)
         field_names = reader.fieldnames
 
@@ -140,11 +153,23 @@ def parse_google_fields(filepath: str, ignore_zip: bool = False) -> dict:
     return field_map
 
 
-def parse_location_fields(filepath: str):
+def parse_location_fields(filepath: str) -> dict:
+    """Parse a header of a CSV file to get the country and city.
+
+    Args:
+        filepath (str): Path to the CSV file
+
+    Raises:
+        FormatError: If the city, country or both columns cannot be found.
+
+    Returns:
+        dict: A map from the field name that was found in the CSV to the standardized name.
+                eg: "person_city": "City"
+    """
     WANTED_FIELDS = {"state", "city"}
     found_translations = []
     field_map = {}
-    with open(filepath, "r") as file:
+    with open(filepath, "r", encoding="utf8") as file:
         reader = csv.DictReader(file)
         field_names = reader.fieldnames
 
@@ -167,7 +192,7 @@ def parse_location_fields(filepath: str):
 
 
 def hash_element(element: any) -> str:
-    """Produces a sha256 hash.
+    """Produces a sha256 hash of an element of data.
 
     Args:
         element (any): The data to be hashed
@@ -177,6 +202,23 @@ def hash_element(element: any) -> str:
     """
     element = str(element).encode("utf-8")
     return hashlib.sha256(element).hexdigest()
+
+
+def hash_series(series: pd.Series):
+    """Hashes a series, usually represnting columns in a CSV.
+
+    Args:
+        series (pd.Series): [description]
+
+    Returns:
+        [type]: [description]
+    """
+    # If the name of the series is a field
+    # that shouldn't be hashed (eg: Zip), don't hash it.
+    if series.name in DO_NOT_HASH:
+        return series
+    else:
+        return series.map(hash_element)
 
 
 def hash_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -190,7 +232,7 @@ def hash_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
     """
     notify(f"Hashing {dataframe.size} elements...")
     start = time.time()
-    dataframe = dataframe.applymap(hash_element)
+    dataframe = dataframe.apply(hash_series, axis=0)
     notify(
         f"Finished hashing {dataframe.size} elements in {time.time() - start} seconds."
     )
@@ -213,6 +255,7 @@ def get_dataframe(filepath: str) -> pd.DataFrame:
         error_bad_lines=False,
         sep=dialect.delimiter,
         low_memory=False,
+        dtype=str,
     )
 
 
@@ -247,22 +290,161 @@ def save_csv(dataframe: pd.DataFrame, output: str):
     notify(f"Succesfully saved Customer Match data file to {os.path.abspath(output)}.")
 
 
-def get_zip(row: pd.Series, search: SearchEngine) -> pd.Series:
+def get_zip(row: pd.Series, search: SearchEngine) -> str:
+    """Get the zip code for a row in a dataframe with the city and state.
+
+    Args:
+        row (pd.Series): A series containing a city and state field.
+        search (SearchEngine): The search engine object to lookup the zipcode.
+
+    Returns:
+        str: The zipcode if found. None otherwise.
+    """
     try:
-        if row["city"] and row["state"]:
+        if row.count() == 2:
             res = search.by_city_and_state(city=row["city"], state=row["state"])
             return res[0].zipcode
         else:
+            warn(f"NaN detected for {row['city']}, {row['state']}.")
             return ""
     except (AttributeError, IndexError):
-        warn(f"Zip lookup for {row['city']}, {row['state']} failed")
+        warn(f"Zip lookup for {row['city']}, {row['state']} failed.")
         return ""
 
 
-def get_zips(dataframe: pd.DataFrame) -> pd.DataFrame:
+def get_zips(dataframe: pd.DataFrame) -> pd.Series:
+    """Gets the zips for a dataframe with city and state columns.
+
+    Args:
+        dataframe (pd.DataFrame): The dataframe, must have city and state columns.
+
+    Returns:
+        pd.Series: A series of zip codes correlating to the zips for each city and state.
+    """
     search = SearchEngine()
     tqdm.pandas(desc="Getting zipcodes")
-    return dataframe.progress_apply(lambda row: get_zip(row, search), axis=1)
+    zips = dataframe.progress_apply(lambda row: get_zip(row, search), axis=1)
+    zips = zips.rename("Zip")
+    return zips
+
+
+def convert_to_iso(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Converts a dataframe's Country column to ISO2 format (United States => US)
+
+    Args:
+        dataframe (pd.DataFrame): A dataframe with a Country column.
+
+    Returns:
+        pd.DataFrame: The dataframe with the Country column in ISO2 format.
+    """
+    notify(f"Converting {len(dataframe.index)} countries to ISO2 format...")
+    start = time.time()
+    iso2_names = coco.convert(names=dataframe["Country"], to="ISO2", not_found=None)
+    dataframe["Country"] = pd.Series(iso2_names)
+    notify(
+        f"Finished converting countries to ISO2 format in {time.time() - start} seconds."
+    )
+    return dataframe
+
+
+def normalize_series(column: pd.Series) -> pd.Series:
+    """Formats a series (usually a column) of strings to be all lowercase and without whitespace.
+
+    Args:
+        column (pd.Series): The series of strings to be normalized
+
+    Returns:
+        pd.Series: The same series, with normalized strings.
+    """
+
+    def format(el: str) -> str:
+        el = el.strip()
+        el = el.lower()
+        return el
+
+    return column.map(format)
+
+
+def get_e164(row: pd.Series) -> str:
+    """Takes a series containing a Phone and Country column and returns the
+        phone number in E.164 format.
+
+
+    Args:
+        row (pd.Series): A series containing at least a Phone and Country column.
+
+    Returns:
+        str: The phone number in E.164 format, if it could be formatted.
+                None otherwise.
+    """
+    if row.count() == 2:
+        try:
+            number = phonenumbers.parse(row["Phone"], row["Country"])
+            return phonenumbers.format_number(
+                number, phonenumbers.PhoneNumberFormat.E164
+            )
+        except phonenumbers.NumberParseException:
+            warn(
+                f"Can't parse phone number {row['Phone']} for country {row['Country']}. It is not recognized as a valid number."
+            )
+            return None
+    else:
+        # warn(
+        #     f"Can't convert phone number {row['Phone']} for country {row['Country']} due to missing data."
+        # )
+        return None
+
+
+def convert_to_e164(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Converts a dataframe's Phone column to E.164. Requires a Country column.
+
+    Args:
+        dataframe (pd.DataFrame): A dataframe with a Phone and Country column
+
+    Returns:
+        pd.DataFrame: The same dataframe with the Phone column reformatted to E.164.
+    """
+    tqdm.pandas(desc="Converting phone numbers to E.164 format")
+    numbers = dataframe[["Country", "Phone"]].progress_apply(get_e164, axis=1)
+    dataframe["Phone"] = numbers
+    return dataframe
+
+
+def format_for_hashing(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Performs formatting on a dataframe necessary for accurate hashing.
+        Will convert the Country column to ISO, normalize all strings, and convert
+        the phone number column to E.164 format.
+
+    Args:
+        dataframe (pd.DataFrame): A dataframe to be formatted
+
+    Returns:
+        pd.DataFrame: The same dataframe formatted. May have many NaN values!
+    """
+    notify("Formatting file for hashing...")
+    dataframe = dataframe.apply(normalize_series, axis=0)
+    dataframe = convert_to_iso(dataframe)
+    dataframe = convert_to_e164(dataframe)
+    notify("Done formatting file.")
+    return dataframe
+
+
+def prune(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Drops any rows in a dataframe that contain NaN, and prints
+        how many rows were affected.
+
+    Args:
+        dataframe (pd.DataFrame): Dataframe to be pruned
+
+    Returns:
+        pd.DataFrame: Same dataframe without rows that have NaN.
+    """
+    total_rows = len(dataframe.index)
+    notify(f"Removing rows with empty values...")
+    dataframe = dataframe.dropna()
+    pruned_rows = len(dataframe.index)
+    notify(f"Removed {total_rows - pruned_rows} rows with empty values.")
+    return dataframe
 
 
 @click.command(
@@ -270,18 +452,25 @@ def get_zips(dataframe: pd.DataFrame) -> pd.DataFrame:
 )
 @click.option("-o", "--output", default="result.csv", help="Path to output file.")
 @click.option(
-    "--hash/--no-hash",
+    "--hash",
     "do_hash",
-    default=False,
-    help="Whether or not to SHA256 hash the contents of each cell.",
+    help="SHA256 hash each element in the resulting CSV.",
+    is_flag=True,
 )
 @click.option(
-    "--upload/--no-upload",
-    default=False,
-    help="Whether or not to upload to Google Adwords automatically. Requires environment variable setup.",
+    "--ignore-empty",
+    help="Don't remove rows with empty elements.",
+    is_flag=True,
+)
+@click.option(
+    "--format",
+    help="Format the document as it would before hashing with E.164 phone numbers and lowercase names. Will remove a significant amount of rows.",
+    is_flag=True,
 )
 @click.argument("filepath")
-def generate(filepath: str, output: str, do_hash: bool, upload: bool):
+def generate(
+    filepath: str, output: str, do_hash: bool, ignore_empty: bool, format: bool
+):
     try:
         file = None
         # Attempt to translate to Google's standard.
@@ -294,7 +483,7 @@ def generate(filepath: str, output: str, do_hash: bool, upload: bool):
         # codes. Ask the user if they want to try.
         except NoZipError:
             warn(
-                "A zip code column could not be found in the CSV file. If there is a state and city column, the zip codes may be able to be automatically detected."
+                "A zip code column could not be found in the CSV file. If there is a state and city column, the zip codes may be able to be automatically detected. This may take hours, depending on your file size."
             )
             if click.confirm("Would you like to try to detect zip codes?"):
                 field_map = parse_location_fields(filepath)
@@ -305,8 +494,27 @@ def generate(filepath: str, output: str, do_hash: bool, upload: bool):
                 file = pd.concat([translated, zip_codes], axis=1)
             else:
                 sys.exit()
+
+        if not ignore_empty:
+            file = prune(file)
+
+        # Format the file for hashing if we are going to hash.
+        # Country codes are converted to ISO as a step in hashing, so
+        # we only have to convert if we are not hashing.
+        if do_hash or format:
+            file = format_for_hashing(file)
+        else:
+            file = convert_to_iso(file)
+
+        # Check again for empty values, if phone numbers can't be formatted
+        # or ISO formats can't be found.
+        if not ignore_empty:
+            file = prune(file)
+
+        # Hashing must be the last step, or else NaN will be hashed.
         if do_hash:
             file = hash_dataframe(file)
+
         save_csv(file, output)
         return 0
     except ValueError as e:

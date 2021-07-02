@@ -9,6 +9,7 @@ OPTIONAL_HEADERS = set()  # TODO: Add optional headers that can be uploaded.
 
 # All headers that can be in a Customer Match CSV.
 ALL_HEADERS = REQUIRED_HEADERS.union(OPTIONAL_HEADERS)
+DO_NOT_HASH = {"Country", "Zip"}
 
 # ANSI codes to color/format terminal prints.
 ANSI = {
