@@ -4,23 +4,10 @@ A simple command line program to translate a CSV containing customer contact inf
 
 ## Usage
 
-Clone repository:
+Install package:
 
 ```sh
-git clone https://github.com/Esquire-Digital/customer-match-tool.git
-cd customer-match-tool
-```
-
-Install required packages:
-
-```sh
-pip install -r requirements.txt
-```
-
-Allow execution of the file (Linux/macOS only)
-
-```sh
-chmod +x customer-match.py
+pip install customer-match-tool
 ```
 
 Run the program on a CSV file:
@@ -41,7 +28,7 @@ The CSV file _must_ have field types that map to these required Google fields:
 - Country
 - Zip
 
-If a field type is not automatically picked up but exists in the CSV, add it to the [translations dictionary](#translations).
+If a field type is not automatically picked up but exists in the CSV, you can add it to the [translations dictionary](#translations).
 
 ## Options
 
