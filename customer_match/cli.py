@@ -190,6 +190,7 @@ def parse_location_fields(filepath: str) -> dict:
 
         for field in field_names:
             # Salesql CSVs prefix state and city by person_.
+            field = field.lower()
             salesql_field = field.replace("person_", "")
             possible_fields = {field, salesql_field}
             if found_set := WANTED_FIELDS.intersection(possible_fields):
