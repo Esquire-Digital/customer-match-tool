@@ -1,0 +1,44 @@
+customer-match-translator
+=========================
+
+A simple command line program to translate a CSV containing customer contact information to Google's Customer Match data format. Has options to allow for hashing of the data before exporting it to a CSV.
+
+Installation
+------------
+
+Using pip:
+
+::
+
+  pip install customer-match-translator
+
+Example
+-------
+
+::
+
+  customer-match-translator contacts.csv -o output.csv
+
+Will output a customer match compliant file to output.csv.
+
+To hash the file before saving, pass the --hash flag:
+
+::
+
+  customer-match-translator --hash contacts.csv -o output.csv
+
+Sometimes you may not have the zip code of your customers. If you instead have a city or state column, the translator will ask you if you want to try to infer the zipcodes. These cannot be entirely accurate, because there may exist multiple zipcodes for any city.
+
+Requirements
+------------
+
+The CSV file must have recognizable field types. Of course, these can simply match the required fields from Google:
+
+- First Name
+- Last Name
+- Phone
+- Email
+- Country
+- Zip
+
+If the field types are not found, the translator will not be able to translate the file.

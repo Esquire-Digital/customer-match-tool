@@ -1,6 +1,6 @@
 # Customer Match Translator
 
-A simple command line program to translate a CSV containing customer contact information to Google's required [Customer Match](https://support.google.com/google-ads/answer/7659867) data format. Written using Python 3. Has options to allow for hashing of the data before exporting it to a CSV.
+A simple command line program to translate a CSV containing customer contact information to Google's [Customer Match](https://support.google.com/google-ads/answer/7659867) data format. Written using Python 3. Has options to allow for hashing of the data before exporting it to a CSV.
 
 ## Usage
 
