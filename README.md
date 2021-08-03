@@ -7,7 +7,7 @@ A simple command line program to translate a CSV containing customer contact inf
 Install package:
 
 ```sh
-pip install customer-match-tool
+pip install customer-match-translator
 ```
 
 Translate a CSV file for plain-text upload to `result.csv`:
@@ -85,7 +85,7 @@ customer-match-translator mycontacts.csv
 
 Output (`examples/plaintext-translation.csv`):
 
-| First Name | Last Name | Email              | State      | City        | Country       | Phone           |
+| First Name | Last Name | Email City         | Country    | Phone       |
 | ---------- | --------- | ------------------ | ---------- | ----------- | ------------- | --------------- |
 | Dorothy    | Gale      | dgale@emerald.city | New Jersey | Hoboken     | United States | +1 555-362-2520 |
 | John       | Doe       | jdoe@hotmail.com   | NJ         | Jersey City | United States | +1 555-894-2405 |
